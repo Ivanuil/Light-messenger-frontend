@@ -4,6 +4,9 @@
     <script>
         axios.defaults.withCredentials = true;
 
+        let openedChat = null;
+        let username = null;
+
         function sendHttp() {
             const to = document.getElementById("username").value;
             const text = document.getElementById("message").value;
@@ -25,31 +28,35 @@
         }
 
         let socket = new WebSocket("ws://127.0.0.1:8080/websocket");
-        socket.onmessage = (event) => {
-            const messageBlock = document.createElement("p");
+        socketSetup();
+        function socketSetup() {
+            socket.onmessage = (event) => {
+                const messageBlock = document.createElement("p");
 
-            try {
-                const messageObj = JSON.parse(event.data);
+                try {
+                    const messageObj = JSON.parse(event.data);
 
-                const authorBlock = document.createElement("b");
-                authorBlock.textContent += messageObj.from;
-                messageBlock.appendChild(authorBlock);
-                messageBlock.appendChild(document.createElement("br"))
+                    const authorBlock = document.createElement("b");
+                    authorBlock.textContent += messageObj.from;
+                    messageBlock.appendChild(authorBlock);
+                    messageBlock.appendChild(document.createElement("br"))
 
-                const textBlock = document.createTextNode(messageObj.text);
-                messageBlock.appendChild(textBlock);
-            } catch (e) {
-                messageBlock.textContent += event.data;
+                    const textBlock = document.createTextNode(messageObj.text);
+                    messageBlock.appendChild(textBlock);
+                } catch (e) {
+                    messageBlock.textContent += event.data;
+                }
+
+                document.getElementById("chat").appendChild(messageBlock);
             }
-
-            document.getElementById("chat").appendChild(messageBlock);
-        }
-        socket.onopen = () => {
-            console.log("Opened socket");
-        }
-        socket.onclose = () => {
-            console.log("Closed socket, attempting to reopen");
-            socket = new WebSocket("ws://127.0.0.1:8080/websocket");
+            socket.onopen = () => {
+                console.log("Opened socket");
+            }
+            socket.onclose = () => {
+                console.log("Closed socket, attempting to reopen");
+                socket = new WebSocket("ws://127.0.0.1:8080/websocket");
+                socketSetup();
+            }
         }
 
         function sendSocket() {
@@ -63,6 +70,66 @@
             document.getElementById("to_socket").value = "";
             document.getElementById("messageEdit").value = "";
         }
+
+        window.onload = function() {
+            axios.get('http://127.0.0.1:8080/companions')
+                .then((response) => {
+                    for (const chatObj in response.data) {
+                        const chatButton = document.createElement("b");
+                        chatButton.textContent += response.data[chatObj];
+                        chatButton.id = response.data[chatObj];
+                        chatButton.addEventListener('click', (event) => {
+                            openedChat = event.target.id;
+                            updateChat();
+                        });
+
+                        document.getElementById("chatsList").appendChild(chatButton);
+                        document.getElementById("chatsList").appendChild(
+                            document.createElement("br"));
+                    }
+                });
+
+            axios.get('http://127.0.0.1:8080/auth/user')
+                .then((response) => {
+                    username = response.data.username;
+                })
+        };
+
+        let rows = [];
+
+        function updateChat() {
+            axios.get('http://127.0.0.1:8080/messages?pageNumber=0&pageSize=5&companion=' + openedChat)
+                .then((response) => {
+                    clearChat();
+                    for (let i = 0; i < response.data.content.length; i++) {
+                        let row = document.createElement("tr");
+                        let cell = document.createElement("td");
+
+                        let author = document.createElement("b");
+                        author.textContent += response.data.content[i].from;
+                        if (response.data.content[i].from === username)
+                            cell.setAttribute('style', 'text-align:right;"');
+                        cell.appendChild(author);
+                        cell.appendChild(document.createElement("br"));
+
+                        let text = document.createElement("b");
+                        text.textContent += response.data.content[i].text;
+                        cell.appendChild(text);
+
+                        row.appendChild(cell);
+                        document.getElementById("messageTable").getElementsByTagName('tbody')[0].appendChild(row);
+                        rows = rows.concat(row);
+                    }
+                });
+        }
+
+        function clearChat() {
+            for (let i = 0; i < rows.length; i++) {
+                rows[i].remove();
+            }
+            rows = [];
+        }
+
     </script>
 </head>
 <body>
@@ -89,5 +156,15 @@
         <input type="text" name="messageEdit" id="messageEdit"/>
         <input type="button" value="Send" id="send" onclick="sendSocket()">
     </form>
+
+    <h1>Chats:</h1>
+
+    <table id="messageTable" style="align-items: start;">
+        <tr style="text-align: left;">
+            <td rowspan="0" id="chatsList" style="vertical-align: top;"></td>
+            <td>Messages</td>
+        </tr>
+    </table>
+
 </body>
 </html>
